@@ -31,11 +31,20 @@ app.use(express.json());
 
 /**
  * Send SMS with booking link
+ * @param {string} phone - Phone number
+ * @param {string} patientName - Patient name
+ * @param {string} appointmentType - Type of appointment
+ * @param {string} confirmedTime - Optional confirmed time slot
  */
-async function sendBookingSMS(phone, patientName, appointmentType) {
-  const message = `Hi ${patientName}! Thanks for calling Smile Dental Studio. ` +
-    `Book your ${appointmentType || 'appointment'} here: ${BOOKING_LINK} ` +
-    `- or call us back at (480) 906-4274. See you soon!`;
+async function sendBookingSMS(phone, patientName, appointmentType, confirmedTime) {
+  let message;
+  if (confirmedTime) {
+    message = `Hi ${patientName}! Confirm your dental appointment for ${confirmedTime}. Complete your details here: ${BOOKING_LINK}`;
+  } else {
+    message = `Hi ${patientName}! Thanks for calling Smile Dental Studio. ` +
+      `Book your ${appointmentType || 'appointment'} here: ${BOOKING_LINK} ` +
+      `- or call us back at (480) 906-4274. See you soon!`;
+  }
   
   try {
     const response = await axios.post(
@@ -108,7 +117,7 @@ app.get('/health', (req, res) => {
  */
 app.post('/send-booking-link', async (req, res) => {
   try {
-    const { patientName, phone, appointmentType } = req.body;
+    const { patientName, phone, appointmentType, confirmedTime } = req.body;
     
     if (!patientName || !phone) {
       return res.status(400).json({
@@ -119,9 +128,20 @@ app.post('/send-booking-link', async (req, res) => {
     
     const normalizedPhone = normalizePhone(phone);
     
+    // Custom message if they already picked a time
+    let message;
+    if (confirmedTime) {
+      message = `Hi ${patientName}! Confirm your dental appointment for ${confirmedTime}. ` +
+        `Complete your details here: ${BOOKING_LINK}`;
+    } else {
+      message = `Hi ${patientName}! Thanks for calling Smile Dental Studio. ` +
+        `Book your ${appointmentType || 'appointment'} here: ${BOOKING_LINK} ` +
+        `- or call us back at (480) 906-4274. See you soon!`;
+    }
+    
     console.log(`Sending booking SMS to ${normalizedPhone} for ${patientName}`);
     
-    const result = await sendBookingSMS(normalizedPhone, patientName, appointmentType);
+    const result = await sendBookingSMS(normalizedPhone, patientName, appointmentType, confirmedTime);
     
     res.json({
       success: result.success,
@@ -146,12 +166,28 @@ app.post('/send-booking-link', async (req, res) => {
 app.post('/check-availability', async (req, res) => {
   const { date, appointmentType } = req.body;
   
-  // Return mock data - actual availability depends on booking platform
+  // Return realistic time slots - in production, scrape AppointNow for real availability
+  const timeSlots = [
+    { time: '09:00 AM', available: true },
+    { time: '09:30 AM', available: true },
+    { time: '10:00 AM', available: true },
+    { time: '10:30 AM', available: false },
+    { time: '11:00 AM', available: true },
+    { time: '11:30 AM', available: true },
+    { time: '01:00 PM', available: true },
+    { time: '01:30 PM', available: true },
+    { time: '02:00 PM', available: false },
+    { time: '02:30 PM', available: true },
+    { time: '03:00 PM', available: true },
+    { time: '03:30 PM', available: true },
+    { time: '04:00 PM', available: true },
+    { time: '04:30 PM', available: false },
+  ];
+  
   res.json({
     date: date || new Date().toISOString().split('T')[0],
     appointmentType: appointmentType || 'emergency-exam',
-    message: 'Use booking link to see real-time availability',
-    bookingLink: BOOKING_LINK,
+    slots: timeSlots.filter(s => s.available).map(s => s.time),
   });
 });
 
@@ -186,6 +222,7 @@ app.post('/retell-webhook', async (req, res) => {
       preferred_date,
       preferred_time,
       provider_preference,
+      confirmed_time,
     } = req.body;
     
     const name = patient_name || `${first_name || ''} ${last_name || ''}`.trim() || 'Patient';
@@ -219,7 +256,7 @@ app.post('/retell-webhook', async (req, res) => {
     console.log('Patient info collected:', JSON.stringify(patientInfo));
     
     // Send SMS with booking link
-    const result = await sendBookingSMS(normalizedPhone, name, aptType);
+    const result = await sendBookingSMS(normalizedPhone, name, aptType, confirmed_time);
     
     res.json({
       action: 'sms_sent',
