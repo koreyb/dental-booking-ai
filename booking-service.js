@@ -158,6 +158,16 @@ app.post('/check-availability', async (req, res) => {
 /**
  * Handle Retell webhook - process collected patient info
  * POST /retell-webhook
+ * 
+ * Accepts all patient fields:
+ * - first_name, last_name (or patient_name)
+ * - phone (required)
+ * - email
+ * - date_of_birth
+ * - appointment_type
+ * - insurance_name, insurance_subscriber_name, insurance_subscriber_id, insurance_group_number
+ * - preferred_date, preferred_time
+ * - provider_preference
  */
 app.post('/retell-webhook', async (req, res) => {
   try {
@@ -166,9 +176,16 @@ app.post('/retell-webhook', async (req, res) => {
       first_name,
       last_name,
       phone, 
+      email,
+      date_of_birth,
       appointment_type,
+      insurance_name,
+      insurance_subscriber_name,
+      insurance_subscriber_id,
+      insurance_group_number,
       preferred_date,
-      preferred_time 
+      preferred_time,
+      provider_preference,
     } = req.body;
     
     const name = patient_name || `${first_name || ''} ${last_name || ''}`.trim() || 'Patient';
@@ -181,6 +198,26 @@ app.post('/retell-webhook', async (req, res) => {
     
     const normalizedPhone = normalizePhone(phoneNumber);
     
+    // Log all collected info for records
+    const patientInfo = {
+      name,
+      phone: normalizedPhone,
+      email,
+      date_of_birth,
+      appointment_type: aptType,
+      insurance: insurance_name ? {
+        name: insurance_name,
+        subscriber_name: insurance_subscriber_name,
+        subscriber_id: insurance_subscriber_id,
+        group_number: insurance_group_number,
+      } : null,
+      preferred_date,
+      preferred_time,
+      provider_preference,
+    };
+    
+    console.log('Patient info collected:', JSON.stringify(patientInfo));
+    
     // Send SMS with booking link
     const result = await sendBookingSMS(normalizedPhone, name, aptType);
     
@@ -190,6 +227,7 @@ app.post('/retell-webhook', async (req, res) => {
       message: result.success 
         ? `Booking link sent to ${normalizedPhone}`
         : `Failed to send SMS: ${result.error}`,
+      patient: patientInfo,
     });
   } catch (error) {
     console.error('Retell webhook error:', error);
